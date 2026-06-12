@@ -1,9 +1,0 @@
-{
-  "name": "daggerheart-encounter-tracker",
-  "description": "Browser-based Daggerheart encounter tracker",
-  "private": true,
-  "scripts": {
-    "test": "node --test tracker-logic.test.js",
-    "build:db": "node _build_adversaries.js"
-  }
-}
