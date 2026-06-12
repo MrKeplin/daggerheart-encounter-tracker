@@ -1,0 +1,4 @@
+# Excluded from GitHub release source ZIP/tarball downloads (git archive).
+# Files remain in the repo for clones and the GitHub project page.
+.gitignore export-ignore
+README.md export-ignore
