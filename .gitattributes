@@ -1,2 +1,3 @@
 # Excluded from GitHub release source ZIP/tarball downloads (git archive).
 .gitignore export-ignore
+.gitattributes export-ignore
