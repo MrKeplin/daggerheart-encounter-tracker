@@ -1,0 +1,1661 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daggerheart Encounter Tracker</title>
+<style>
+  :root { 
+    --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #d32f2f; --border: #333; 
+    --accent-hover: #b71c1c; --secondary: #1f618d; --secondary-hover: #154360; 
+    --font-fantasy: Georgia, 'Times New Roman', Times, serif;
+    --font-ui: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  
+  body { font-family: var(--font-ui); background-color: var(--bg); color: var(--text); padding: 20px; margin: 0; }
+  h1 { font-family: var(--font-fantasy); text-align: center; color: #f1c40f; margin-bottom: 20px; font-size: 2.5rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+  h2 { font-family: var(--font-fantasy); margin: 0 0 10px 0; font-size: 1.4rem; color: #ddd; text-align: center; border-bottom: 1px solid var(--border); padding-bottom: 10px;}
+
+  .container { max-width: 100%; margin: 0 auto; padding: 16px; box-sizing: border-box; }
+
+  /* App header */
+  .app-header { display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+  .app-header h1 { margin: 0; font-size: clamp(1.5rem, 4vw, 2.5rem); }
+
+  /* Animations */
+  @keyframes cardEnter { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes defeatedSink { from { transform: translateY(0); } to { transform: translateY(2px); } }
+  @keyframes cardExit { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(10px) scale(0.97); } }
+  @keyframes hpDamageFlash { 0%, 100% { box-shadow: 0 4px 8px rgba(0,0,0,0.4); } 50% { box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.75), 0 0 14px rgba(231, 76, 60, 0.3); } }
+  @keyframes hpHealFlash { 0%, 100% { box-shadow: 0 4px 8px rgba(0,0,0,0.4); } 50% { box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.75), 0 0 14px rgba(46, 204, 113, 0.25); } }
+  @keyframes barDamageFlash { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+  @keyframes barHealFlash { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.3); } }
+  @keyframes stressBarUp { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.45); box-shadow: inset 0 0 6px rgba(155, 89, 182, 0.6); } }
+  @keyframes stressBarDown { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+  @keyframes valueBump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+  @keyframes defeatPop { 0% { transform: scale(1); } 35% { transform: scale(0.96); } 100% { transform: scale(1); } }
+  @keyframes tokenBump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.22); } }
+  @keyframes roundFlash { 0%, 100% { color: #f1c40f; transform: scale(1); text-shadow: none; } 50% { color: #fff; transform: scale(1.12); text-shadow: 0 0 10px rgba(241, 196, 15, 0.7); } }
+
+  .card.card-enter { animation: cardEnter 0.25s ease-out; }
+  .card.defeated { animation: defeatedSink 0.3s ease-out; }
+  .card.card-exit { animation: cardExit 0.25s ease-in forwards; pointer-events: none; }
+  .card.flash-hp-damage { animation: hpDamageFlash 0.35s ease-out; }
+  .card.flash-hp-heal { animation: hpHealFlash 0.35s ease-out; }
+  .card.flash-defeat { animation: defeatPop 0.4s ease-out; }
+  .hp-fill.flash-damage { animation: barDamageFlash 0.35s ease-out; }
+  .hp-fill.flash-heal { animation: barHealFlash 0.35s ease-out; }
+  .stress-fill.flash-stress-up { animation: stressBarUp 0.35s ease-out; }
+  .stress-fill.flash-stress-down { animation: stressBarDown 0.35s ease-out; }
+  .stat-value.flash-bump { animation: valueBump 0.3s ease-out; display: inline-block; }
+  .token-val.token-bump-fear { animation: tokenBump 0.3s ease-out; color: #d2b4de !important; }
+  .token-val.token-bump-action { animation: tokenBump 0.3s ease-out; color: #85c1e9 !important; }
+  .round-val.round-flash { animation: roundFlash 0.4s ease-out; display: inline-block; }
+
+  .undo-toast { transition: transform 0.25s ease, opacity 0.25s ease; }
+  @media (prefers-reduced-motion: reduce) {
+    .card.card-enter, .card.defeated, .card.card-exit,
+    .card.flash-hp-damage, .card.flash-hp-heal, .card.flash-defeat,
+    .hp-fill.flash-damage, .hp-fill.flash-heal,
+    .stress-fill.flash-stress-up, .stress-fill.flash-stress-down,
+    .stat-value.flash-bump,
+    .token-val.token-bump-fear, .token-val.token-bump-action,
+    .round-val.round-flash,
+    .threat-deadly { animation: none !important; }
+    .progress-fill, .undo-toast { transition: none !important; }
+  }
+
+  /* ── TOP BAR ── */
+  .top-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+  .top-widget {
+    flex: 1; min-width: 220px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .top-widget--ref { flex: 1.5; }
+  .top-widget-title {
+    font-family: var(--font-fantasy); font-size: 0.85rem; color: #888;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;
+    border-bottom: 1px solid var(--border); padding-bottom: 6px;
+  }
+
+  /* ── SECTION PANELS (collapsible) ── */
+  .section-panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); overflow: hidden;
+  }
+  .section-summary {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; background: #151515; border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none; list-style: none;
+    font-family: var(--font-fantasy); font-size: 1rem; color: #ccc;
+  }
+  .section-summary::-webkit-details-marker { display: none; }
+  .section-summary:hover { color: #fff; background: #1a1a1a; }
+  details.section-panel:not([open]) .section-summary { border-bottom-color: transparent; }
+  .section-chevron { font-size: 0.75rem; color: #666; transition: transform 0.2s; }
+  details.section-panel:not([open]) .section-chevron { transform: rotate(-90deg); }
+
+  .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
+  .setup-block {
+    background: #151515; border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .setup-block h3 {
+    margin: 0 0 2px 0; font-family: var(--font-fantasy); font-size: 1rem; color: #ccc;
+    border-bottom: 1px solid #333; padding-bottom: 8px;
+  }
+
+  .session-inner { padding: 16px; }
+
+  /* ── ENCOUNTER SECTION ── */
+  .encounter-section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3); overflow: hidden;
+  }
+  .encounter-header {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 12px 16px; background: #151515; border-bottom: 1px solid var(--border);
+  }
+  .encounter-title-block { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .encounter-title {
+    margin: 0; font-family: var(--font-fantasy); font-size: 1.1rem; color: #ccc;
+    border: none; padding: 0; text-align: left;
+  }
+  .adv-count {
+    font-size: 0.75rem; color: #888; background: #222; border: 1px solid #444;
+    border-radius: 10px; padding: 2px 10px; white-space: nowrap;
+  }
+  .encounter-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+  .round-block {
+    display: flex; align-items: center; gap: 6px;
+    background: #222; border: 1px solid #444; border-radius: 6px; padding: 4px 10px;
+  }
+  .round-label {
+    font-family: var(--font-fantasy); font-size: 0.75rem; color: #888;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .round-val {
+    font-family: var(--font-fantasy); font-size: 1.3rem; font-weight: bold;
+    color: #f1c40f; min-width: 28px; text-align: center;
+  }
+
+  .encounter-body { padding: 16px; }
+
+  /* Compact card mode */
+  .encounter-grid.compact { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+  .encounter-grid.compact .card { padding: 12px; gap: 8px; }
+  .encounter-grid.compact .lore-box { display: none; }
+  .encounter-grid.compact .card-header h3 { font-size: 1.1rem; }
+
+  .btn-active { background: var(--secondary) !important; border-color: var(--secondary) !important; color: #fff !important; }
+
+  /* ── TOKEN TRACKERS ── */
+  .token-container { display: flex; flex-direction: column; gap: 15px; width: 100%;}
+  .token-box { display: flex; align-items: center; justify-content: space-between; font-weight: bold; width: 100%; padding: 0 4px;}
+  .token-box.fear span.label { font-family: var(--font-fantasy); text-transform: uppercase; letter-spacing: 2px; color: #b39ddb; font-size: 1.1rem;}
+  .token-box.action span.label { font-family: var(--font-fantasy); text-transform: uppercase; letter-spacing: 2px; color: #5dade2; font-size: 1.1rem;}
+  .token-controls { display: flex; align-items: center; gap: 10px; }
+  .btn-token { background: #333; color: white; border: 1px solid #555; border-radius: 4px; width: 35px; height: 35px; cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s;}
+  .btn-token:hover { background: #555; border-color: #777;}
+  .btn-token.clear { background: #555; font-size: 0.8rem; width: auto; padding: 0 8px; font-weight: bold; font-family: var(--font-ui);}
+  .btn-token.clear:hover { background: #e74c3c; border-color: #e74c3c;}
+  .token-val { width: 40px; text-align: center; font-size: 2rem; color: #fff; font-family: var(--font-fantasy); }
+
+  /* ── THREAT CALCULATOR ── */
+  .threat-calc { text-align: center; width: 100%;}
+  .threat-calc label { font-size: 0.9rem; color: #aaa; text-transform: uppercase; letter-spacing: 1px;}
+  .threat-calc input { width: 50px; padding: 5px; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px; text-align: center; font-weight: bold; margin-bottom: 10px;}
+  .threat-level { font-family: var(--font-fantasy); font-size: 1.5rem; font-weight: bold; letter-spacing: 1px; padding: 5px 10px; border-radius: 4px; background: #222; transition: color 0.3s ease, background 0.3s ease; }
+  .threat-trivial { color: #3498db; }
+  .threat-standard { color: #2ecc71; }
+  .threat-hard { color: #f1c40f; }
+  .threat-deadly { color: #e74c3c; animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); } 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); } }
+
+  /* ── GM REFERENCE ── */
+  .gm-ref { font-size: 0.85rem; color: #ccc; width: 100%;}
+  .gm-ref h4 { margin: 0 0 5px 0; color: #b39ddb; font-family: var(--font-fantasy); font-size: 1.1rem;}
+  .gm-ref ul { padding-left: 20px; margin: 0; line-height: 1.4;}
+  .gm-ref li span { font-weight: bold; color: #f39c12; }
+
+  /* ── CONTROLS / FORMS ── */
+  .panel { background: transparent; padding: 0; border: none; border-radius: 0; display: flex; flex-direction: column; gap: 15px; box-shadow: none; }
+  .form-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+  .form-row input, .form-row select { padding: 8px; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px; font-family: var(--font-ui); }
+  .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--secondary); }
+  .btn-primary, .btn-secondary, .btn-danger { padding: 10px 20px; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; max-width: 300px; margin: 0 auto; display: block; font-family: var(--font-ui); text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s; }
+  .btn-primary { background: var(--accent); } .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary { background: var(--secondary); } .btn-secondary:hover { background: var(--secondary-hover); }
+  .btn-danger { background: #555; font-size: 0.8rem; padding: 5px 10px; margin-top: 10px;} .btn-danger:hover { background: #e74c3c; }
+  .btn-small { padding: 8px 14px; font-size: 0.8rem; max-width: none; width: auto; display: inline-block; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+  .btn-ghost { background: #333; color: #ddd; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+  .btn-ghost:hover { background: #444; }
+
+  .filter-row { width: 100%; max-width: 100%; }
+  .filter-row input, .filter-row select { flex: 1; min-width: 120px; }
+  .filter-hint { font-size: 0.75rem; color: #666; text-align: center; margin: -8px 0 0 0; }
+
+  .tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .tools-block { background: #151515; border: 1px solid var(--border); border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .tools-block h3 { margin: 0; font-family: var(--font-fantasy); font-size: 1.05rem; color: #ccc; border-bottom: 1px solid #333; padding-bottom: 8px; }
+  .tools-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tools-row input, .tools-row select, .tools-row textarea { padding: 8px; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px; font-family: var(--font-ui); }
+  .tools-row input, .tools-row select { flex: 1; min-width: 100px; }
+  .share-code-area { width: 100%; min-height: 72px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem; letter-spacing: 0.5px; resize: vertical; word-break: break-all; }
+  .share-msg { font-size: 0.8rem; color: #2ecc71; min-height: 1.2em; }
+  .share-msg.error { color: #e74c3c; }
+
+  /* ── UNDO TOAST ── */
+  .undo-toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #2c3e50; border: 1px solid #34495e; border-radius: 8px;
+    padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 1000; max-width: 90vw;
+    opacity: 0; pointer-events: none;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .undo-toast.visible { display: flex; transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+  .undo-toast-text { font-size: 0.95rem; color: #ecf0f1; }
+  .undo-toast-text strong { color: #f1c40f; }
+  .btn-undo {
+    background: var(--secondary); color: white; border: none; border-radius: 4px;
+    padding: 8px 16px; cursor: pointer; font-weight: bold; text-transform: uppercase;
+    letter-spacing: 0.5px; white-space: nowrap;
+  }
+  .btn-undo:hover { background: var(--secondary-hover); }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    grid-column: 1 / -1; text-align: center; padding: 48px 24px;
+    background: var(--card); border: 2px dashed var(--border); border-radius: 12px; color: #888;
+  }
+  .empty-state p { margin: 0 0 8px 0; font-family: var(--font-fantasy); font-size: 1.3rem; color: #aaa; }
+  .empty-hint { font-size: 0.95rem !important; font-family: var(--font-ui) !important; color: #666 !important; }
+
+  /* ── CARDS ── */
+  .encounter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; padding: 16px; }
+  .card { background: var(--card); padding: 20px; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); position: relative; border-top-width: 6px; transition: opacity 0.3s, filter 0.3s, transform 0.3s; }
+  .card.defeated { opacity: 0.5; filter: grayscale(0.75); border-top-color: #444 !important; }
+  .card.defeated .card-header h3 { color: #888; text-decoration: line-through; text-decoration-color: #666; }
+  .badge-defeated { background: #444 !important; color: #aaa !important; border: 1px solid #555; font-size: 0.65rem; }
+  .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px;}
+  .card-header-text { display: flex; flex-direction: column; gap: 6px; }
+  .card-header h3 { font-family: var(--font-fantasy); margin: 0; font-size: 1.5rem; color: #fff; letter-spacing: 0.5px;}
+  .card-header-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .badge-container { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 0.7rem; padding: 4px 8px; border-radius: 4px; color: #fff; width: max-content; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; box-shadow: inset 0 0 5px rgba(0,0,0,0.3); }
+  .badge-diff { background: #2c3e50; border: 1px solid #34495e; color: #ecf0f1; }
+  .btn-remove, .btn-duplicate {
+    background: transparent; color: #777; border: 1px solid #444; border-radius: 4px;
+    padding: 4px 10px; cursor: pointer; font-weight: bold; height: fit-content; transition: all 0.2s;
+  }
+  .btn-remove:hover { background: #e74c3c; color: white; border-color: #e74c3c; }
+  .btn-duplicate:hover { background: var(--secondary); color: white; border-color: var(--secondary); }
+
+  /* LORE & ATTACK */
+  .lore-box { font-size: 0.9rem; color: #ccc; background: #151515; padding: 12px; border-radius: 6px; border-left: 3px solid #555; }
+  .lore-box .adv-desc { color: #ddd; font-style: italic; margin-bottom: 8px; line-height: 1.4; }
+  .lore-box .motives { color: #aaa; margin-bottom: 4px; }
+  .lore-box .exp { color: #a2d9ce; font-weight: bold; font-size: 0.85rem;}
+  .attack-box { background: #111; padding: 10px; border-radius: 6px; border: 1px solid #333; font-size: 0.9rem; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px;}
+  .atk-tag { background: #222; padding: 3px 8px; border-radius: 4px; border: 1px solid #444; display: flex; gap: 5px; align-items: center;}
+  .atk-tag .lbl { color: #888; font-size: 0.75rem; text-transform: uppercase;}
+  .atk-tag .val { font-weight: bold; color: #e57373;}
+  .atk-tag .val.type-phy { color: #aed6f1; }
+  .atk-tag .val.type-mag { color: #bb8fce; }
+  .atk-tag .val.type-misc { color: #95a5a6; }
+
+  /* STATUS TOGGLES */
+  .status-bar { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; background: #1a1a1a; padding: 8px; border-radius: 6px; border: 1px solid #333;}
+  .status-btn { background: #222; color: #777; border: 1px solid #444; border-radius: 12px; padding: 3px 8px; font-size: 0.75rem; cursor: pointer; text-transform: uppercase; font-weight: bold; transition: all 0.2s; }
+  .status-btn:hover { border-color: #888; color: #ccc;}
+  .status-btn.active { background: #e67e22; color: #fff; border-color: #d35400; box-shadow: 0 0 5px rgba(230, 126, 34, 0.5);}
+
+  /* BARS & DAMAGE */
+  .stat-block { background: #1a1a1a; padding: 10px; border-radius: 6px; border: 1px solid #333; display: flex; flex-direction: column; gap: 8px;}
+  .stat-row { display: flex; justify-content: space-between; align-items: center; }
+  .stat-label { font-family: var(--font-fantasy); font-weight: bold; font-size: 1.1rem; letter-spacing: 1px; }
+  .stat-controls { display: flex; align-items: center; gap: 10px; }
+  .btn-stat { background: #333; color: white; border: 1px solid #555; border-radius: 4px; width: 28px; height: 28px; cursor: pointer; font-size: 1.1rem; transition: background 0.2s;}
+  .btn-stat:hover { background: #555; }
+  .stat-value { font-weight: bold; font-size: 1.1rem; min-width: 45px; text-align: center; }
+  .progress-bg { width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; transition: width 0.3s ease, background-color 0.3s ease; }
+  .stress-fill { background: #9b59b6; }
+  .thresholds { font-size: 0.8rem; color: #888; text-align: center; text-transform: uppercase; letter-spacing: 1px; margin-top: -2px;}
+  .damage-tool { background: #111; padding: 10px; border-radius: 6px; display: flex; gap: 10px; align-items: center; border: 1px solid #333;}
+  .damage-tool input { width: 60px; padding: 8px; background: #222; border: 1px solid #555; color: white; border-radius: 4px; text-align: center; font-weight: bold;}
+  .damage-tool button { flex: 1; padding: 8px; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;}
+  .damage-tool button:hover { background: var(--accent-hover); }
+
+  /* FEATURES */
+  .features-section { margin-top: 5px; border-top: 1px dashed var(--border); padding-top: 10px; }
+  .features-section.collapsed .features-list { display: none; }
+  .features-toggle {
+    font-family: var(--font-fantasy); margin: 0 0 10px 0; font-size: 1.1rem; color: #ccc;
+    cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; transition: color 0.2s;
+  }
+  .features-toggle:hover { color: #fff; }
+  .features-toggle .feat-count { font-size: 0.75rem; color: #888; font-family: var(--font-ui); font-weight: normal; margin-left: 6px; }
+  .features-toggle .chevron { font-size: 0.75rem; color: #888; transition: transform 0.2s; }
+  .features-section.collapsed .features-toggle { margin-bottom: 0; }
+  .features-section.collapsed .chevron { transform: rotate(-90deg); }
+  .features-section h4 { font-family: var(--font-fantasy); margin: 0 0 10px 0; font-size: 1.1rem; color: #ccc; }
+  .feature-item { background: #1a1a1a; padding: 10px; border-radius: 4px; margin-bottom: 6px; font-size: 0.85rem; border-left: 3px solid #777; line-height: 1.4; color: #ddd;}
+  .cost-tag { font-weight: bold; background: #2a2a2a; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-right: 5px; border: 1px solid #444;}
+  .cost-tag.fear { color: #d2b4de; border-color: #8e44ad; }
+  .cost-tag.stress { color: #f5b7b1; border-color: #c0392b; }
+  .cost-tag.action { color: #aed6f1; border-color: #2980b9; }
+
+  .atk-tag .val.type-both { color: #e8daef; }
+  .atk-tag .val.horde-weakened { color: #bb8fce !important; text-decoration: line-through; opacity: 0.85; }
+  .role-rule {
+    font-size: 0.8rem; padding: 8px 10px; border-radius: 6px; margin-top: -4px;
+    background: #1a1a1a; border: 1px solid #444; line-height: 1.35; color: #bbb;
+  }
+  .role-rule.minion { border-left: 3px solid #7f8c8d; }
+  .role-rule.horde { border-left: 3px solid #6c3483; }
+  .role-rule.horde.weakened { color: #e8daef; border-color: #8e44ad; background: #221a28; }
+  .role-rule strong { color: #f1c40f; }
+
+  .summons-section { margin-top: 4px; border-top: 1px dashed var(--border); padding-top: 10px; }
+  .summons-section h4 { font-family: var(--font-fantasy); margin: 0 0 8px 0; font-size: 1rem; color: #ccc; }
+  .summon-btn {
+    display: block; width: 100%; margin-bottom: 6px; padding: 8px 10px;
+    background: #2a2a2a; color: #ddd; border: 1px solid #555; border-radius: 4px;
+    cursor: pointer; font-size: 0.85rem; text-align: left; transition: all 0.2s;
+  }
+  .summon-btn:hover { background: var(--secondary); border-color: var(--secondary); color: #fff; }
+  .summon-note { font-size: 0.75rem; color: #888; margin-top: -2px; margin-bottom: 6px; }
+  .feature-item b { color: #f1c40f; font-weight: 600; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) { .tools-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) {
+    .top-bar { flex-direction: column; }
+    .top-widget { min-width: 0; }
+    .setup-grid { grid-template-columns: 1fr; }
+    .encounter-header { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header class="app-header">
+    <h1>Daggerheart Encounter Tracker</h1>
+  </header>
+
+  <!-- ── TOP BAR ── -->
+  <div class="top-bar">
+
+    <div class="top-widget">
+      <div class="top-widget-title">Fear &amp; Actions</div>
+      <div class="token-container">
+        <div class="token-box action" title="Add a token every time a player makes an action. Clear them when the GM takes a turn.">
+          <span class="label">Player Actions</span>
+          <div class="token-controls">
+            <button class="btn-token" onclick="updatePlayer(-1)">-</button>
+            <span class="token-val" id="playerCount">0</span>
+            <button class="btn-token" onclick="updatePlayer(1)">+</button>
+            <button class="btn-token clear" onclick="clearPlayer()">CLEAR</button>
+          </div>
+        </div>
+        <div class="token-box fear" style="border-top: 1px solid #333; padding-top: 15px;">
+          <span class="label">Fear Tokens</span>
+          <div class="token-controls">
+            <button class="btn-token" onclick="updateFear(-1)">-</button>
+            <span class="token-val" id="fearCount">0</span>
+            <button class="btn-token" onclick="updateFear(1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="top-widget">
+      <div class="top-widget-title">Threat Meter</div>
+      <div class="threat-calc">
+        <label for="partySize">Party Size:</label>
+        <input type="number" id="partySize" value="4" min="1" max="10" oninput="debouncedSaveData()" onchange="saveData()">
+        <div style="margin-top: 5px;">Threat Level:</div>
+        <div id="threatDisplay" class="threat-level threat-standard">STANDARD</div>
+      </div>
+    </div>
+
+    <div class="top-widget top-widget--ref">
+      <div class="top-widget-title">Fear Spend Reference</div>
+      <div class="gm-ref">
+        <ul>
+          <li><span>1 Fear:</span> Interrupt a player's turn to act.</li>
+          <li><span>1 Fear:</span> Activate an adversary's Fear feature.</li>
+          <li><span>1 Fear:</span> Clear an adversary's Stress.</li>
+          <li><span>2 Fear:</span> Introduce a major complication.</li>
+          <li><span>X Fear:</span> Spawn reinforcements.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── SETUP (collapsible) ── -->
+  <details class="section-panel" id="section-setup" open>
+    <summary class="section-summary">
+      <span>Setup</span>
+      <span class="section-chevron">&#9660;</span>
+    </summary>
+    <div class="setup-grid">
+
+      <div class="setup-block">
+        <h3>Add Adversaries</h3>
+        <div class="form-row filter-row">
+          <input type="text" id="premadeSearch" placeholder="Search name, type..." oninput="filterPremadeDropdown()" style="flex:2;">
+          <select id="premadeTierFilter" onchange="filterPremadeDropdown()" style="flex:0.6; min-width:90px;">
+            <option value="all">All Tiers</option>
+            <option value="1">Tier 1</option>
+            <option value="2">Tier 2</option>
+            <option value="3">Tier 3</option>
+            <option value="4">Tier 4</option>
+          </select>
+          <select id="premadeEnvFilter" onchange="filterPremadeDropdown()" style="flex:1;">
+            <option value="all">All Environments</option>
+          </select>
+        </div>
+        <p class="filter-hint" id="premadeFilterHint"></p>
+        <div class="form-row">
+          <select id="premadeSelect" style="width: 100%; padding: 10px; font-size: 1rem;"></select>
+        </div>
+        <button class="btn-secondary" onclick="addPremade()">+ Quick-Add to Encounter</button>
+      </div>
+
+      <div class="setup-block">
+        <h3>Custom Adversary</h3>
+        <div class="form-row">
+          <input type="text" id="advName" placeholder="Name" required style="width: 120px;">
+          <select id="advTier" style="width: 70px;">
+            <option value="1">Tier 1</option>
+            <option value="2">Tier 2</option>
+            <option value="3">Tier 3</option>
+            <option value="4">Tier 4</option>
+          </select>
+          <select id="advType" style="width: 100px;">
+            <option value="Minion">Minion</option>
+            <option value="Standard">Standard</option>
+            <option value="Skirmisher">Skirmisher</option>
+            <option value="Skulk">Skulk</option>
+            <option value="Ranged">Ranged</option>
+            <option value="Bruiser">Bruiser</option>
+            <option value="Defender">Defender</option>
+            <option value="Support">Support</option>
+            <option value="Leader">Leader</option>
+            <option value="Solo">Solo</option>
+            <option value="Social">Social</option>
+            <option value="Horde">Horde</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <input type="number" id="advDiff" placeholder="Diff" required style="width: 60px;">
+          <input type="number" id="advHP" placeholder="HP" min="1" required style="width: 60px;">
+          <input type="number" id="advStress" placeholder="Stress" min="0" required style="width: 70px;">
+          <input type="number" id="advMajor" placeholder="Major" min="0" required style="width: 60px;">
+          <input type="number" id="advSevere" placeholder="Severe" min="0" required style="width: 60px;">
+        </div>
+        <div class="form-row">
+          <input type="text" id="advWeapon" placeholder="Weapon" style="width: 110px;">
+          <input type="text" id="advATK" placeholder="ATK (+X)" style="width: 80px;">
+          <input type="text" id="advDice" placeholder="Dice" style="width: 70px;">
+          <select id="advDamageType" style="width: 90px;">
+            <option value="Physical">Physical</option>
+            <option value="Magic">Magic</option>
+            <option value="Misc">Misc</option>
+          </select>
+        </div>
+        <button class="btn-primary" onclick="addCustomAdversary()">+ Create Custom</button>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- ── SESSION TOOLS (collapsible) ── -->
+  <details class="section-panel" id="section-session">
+    <summary class="section-summary">
+      <span>Session Tools</span>
+      <span class="section-chevron">&#9660;</span>
+    </summary>
+    <div class="session-inner">
+      <div class="tools-grid">
+        <div class="tools-block">
+          <h3>Encounter Presets</h3>
+          <div class="tools-row">
+            <input type="text" id="presetName" placeholder="Preset name (e.g. Bandit Ambush)">
+            <button class="btn-secondary btn-small" onclick="savePreset()">Save</button>
+          </div>
+          <div class="tools-row">
+            <select id="presetSelect">
+              <option value="">— Select a preset —</option>
+            </select>
+            <button class="btn-ghost btn-small" onclick="loadPreset()">Load</button>
+            <button class="btn-ghost btn-small" onclick="deletePreset()" style="color:#e74c3c;border-color:#633;">Del</button>
+          </div>
+          <p class="filter-hint">Saves current encounter roster, HP, Stress, tokens, round, and party size.</p>
+          <div class="tools-row">
+            <button type="button" class="btn-danger btn-small" onclick="resetSession()">Reset Session</button>
+          </div>
+          <p class="filter-hint">Reset Session clears fear, player actions, round, and the encounter board.</p>
+        </div>
+        <div class="tools-block">
+          <h3>Share Code</h3>
+          <p class="filter-hint" style="margin:0;">Megaman-style backup code — copy and paste to move sessions between devices.</p>
+          <textarea id="shareCodeArea" class="share-code-area" placeholder="Paste a DH1 code here to import, or click Generate..."></textarea>
+          <div class="tools-row">
+            <button class="btn-secondary btn-small" onclick="exportShareCode()">Generate Code</button>
+            <button class="btn-ghost btn-small" onclick="copyShareCode()">Copy</button>
+            <button class="btn-primary btn-small" onclick="importShareCode()">Import Code</button>
+          </div>
+          <div id="shareMsg" class="share-msg"></div>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- ── ENCOUNTER BOARD (free-flowing) ── -->
+  <section class="encounter-section">
+    <div class="encounter-header">
+      <div class="encounter-title-block">
+        <h2 class="encounter-title">Encounter Board</h2>
+        <span class="adv-count" id="advCount"></span>
+      </div>
+      <div class="encounter-controls">
+        <div class="round-block">
+          <span class="round-label">Round</span>
+          <button class="btn-stat" onclick="updateRound(-1)">-</button>
+          <span class="round-val" id="roundDisplay">1</span>
+          <button class="btn-stat" onclick="updateRound(1)">+</button>
+        </div>
+        <button type="button" class="btn-ghost btn-small" id="compactToggle" onclick="toggleCompact()">Compact</button>
+        <button type="button" class="btn-ghost btn-small" onclick="removeDefeated()">Clear Defeated</button>
+        <button type="button" class="btn-danger btn-small" onclick="clearEncounter()">Clear Encounter Board</button>
+      </div>
+    </div>
+    <div class="encounter-grid" id="encounterGrid"></div>
+  </section>
+
+</div>
+
+<div class="undo-toast" id="undoToast" role="status" aria-live="polite">
+  <span class="undo-toast-text" id="undoToastText"></span>
+  <button class="btn-undo" onclick="undoRemove()">Undo</button>
+</div>
+
+<script src="adversaries.js"></script>
+<script src="adversaries-enrich.js"></script>
+<script src="tracker-logic.js"></script>
+<script>
+  // Colors & Enums
+  const roleColors = { "Minion": "#7f8c8d", "Standard": "#2980b9", "Skirmisher": "#27ae60", "Skulk": "#1a5276", "Ranged": "#16a085", "Bruiser": "#c0392b", "Defender": "#d35400", "Support": "#8e44ad", "Leader": "#2c3e50", "Solo": "#f39c12", "Social": "#e84393", "Horde": "#6c3483" };
+  const possibleStatuses = ["Vulnerable", "Restrained", "Hidden", "Taunted", "Frightened"];
+
+  // State
+  let fearTokens = 0;
+  let playerTokens = 0;
+  let roundCount = 1;
+  let compactMode = false;
+  let adversaries = [];
+  let undoState = null;
+  let undoTimer = null;
+  let premadeCatalog = [];
+  let expandedAbilityCards = new Set();
+  const L = DhTrackerLogic;
+  const SAVE_CODE_PREFIX = L.SAVE_CODE_PREFIX;
+  const PRESETS_KEY = 'dh_tracker_presets';
+  let saveDataTimer = null;
+  let cardEnterIds = new Set();
+
+  function prefersReducedMotion() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function triggerAnim(el, className, durationMs) {
+    if (!el || prefersReducedMotion()) return;
+    el.classList.remove(className);
+    void el.offsetWidth;
+    el.classList.add(className);
+    setTimeout(function() { el.classList.remove(className); }, durationMs || 300);
+  }
+
+  function markCardEnter() {
+    for (let i = 0; i < arguments.length; i++) {
+      if (arguments[i]) cardEnterIds.add(arguments[i]);
+    }
+  }
+
+  // Init
+  window.onload = function() {
+    initFonts();
+    loadData();
+    applyUIState();
+    buildPremadeCatalog();
+    populateEnvFilter();
+    filterPremadeDropdown();
+    loadPresetList();
+    renderGrid();
+    calculateThreat();
+    updateRoundDisplay();
+
+    document.getElementById('premadeSearch').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') addPremade();
+    });
+
+    document.getElementById('section-setup').addEventListener('toggle', saveData);
+    document.getElementById('section-session').addEventListener('toggle', saveData);
+  };
+
+  function debouncedSaveData() {
+    clearTimeout(saveDataTimer);
+    saveDataTimer = setTimeout(saveData, 300);
+  }
+
+  function initFonts() {
+    const offlineStack = "Georgia, 'Times New Roman', Times, serif";
+    const onlineStack = "'Lora', Georgia, 'Times New Roman', Times, serif";
+
+    function useOfflineFonts() {
+      document.documentElement.style.setProperty('--font-fantasy', offlineStack);
+      const link = document.getElementById('google-fonts');
+      if (link) link.remove();
+    }
+
+    function useOnlineFonts() {
+      if (!document.getElementById('google-fonts')) {
+        const link = document.createElement('link');
+        link.id = 'google-fonts';
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&display=swap';
+        document.head.appendChild(link);
+      }
+      document.documentElement.style.setProperty('--font-fantasy', onlineStack);
+    }
+
+    if (navigator.onLine) {
+      useOnlineFonts();
+    } else {
+      useOfflineFonts();
+    }
+
+    window.addEventListener('online', useOnlineFonts);
+    window.addEventListener('offline', useOfflineFonts);
+  }
+
+  function escapeHtml(text) {
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = String(text);
+    return div.innerHTML;
+  }
+
+  function fixMojibake(text) {
+    if (text == null) return text;
+    return String(text)
+      .replace(/â€™/g, "'")
+      .replace(/â€˜/g, "'")
+      .replace(/â€œ/g, '"')
+      .replace(/â€\u009d/g, '"')
+      .replace(/â€"/g, '-')
+      .replace(/â€"/g, '-')
+      .replace(/fi sts/g, 'fists')
+      .replace(/fi ts/g, 'fits')
+      .replace(/confl ict/g, 'conflict')
+      .replace(/fl ames/g, 'flames')
+      .replace(/benefi ts/g, 'benefits');
+  }
+
+  function getTemplateForAdversary(adv) {
+    return L.getTemplateForAdversary(adv, monsterManual);
+  }
+
+  function syncOfficialFields(adv) {
+    return L.syncOfficialFields(adv, monsterManual);
+  }
+
+  function normalizeAdversary(adv) {
+    return L.normalizeAdversary(adv);
+  }
+
+  function prepareAdversary(adv, options) {
+    return L.prepareAdversary(adv, monsterManual, options);
+  }
+
+  function applyUIState() {
+    document.getElementById('encounterGrid').classList.toggle('compact', compactMode);
+    document.getElementById('compactToggle').classList.toggle('btn-active', compactMode);
+    const setupPanel = document.getElementById('section-setup');
+    const sessionPanel = document.getElementById('section-session');
+    if (setupPanel && typeof setupPanelOpen === 'boolean') setupPanel.open = setupPanelOpen;
+    if (sessionPanel && typeof sessionPanelOpen === 'boolean') sessionPanel.open = sessionPanelOpen;
+  }
+
+  let setupPanelOpen;
+  let sessionPanelOpen;
+
+  function getSessionPayload() {
+    return {
+      v: 1,
+      saveVersion: L.SAVE_VERSION,
+      fearTokens,
+      playerTokens,
+      round: roundCount,
+      partySize: parseInt(document.getElementById('partySize').value) || 4,
+      compactMode,
+      setupPanelOpen: document.getElementById('section-setup')?.open ?? true,
+      sessionPanelOpen: document.getElementById('section-session')?.open ?? false,
+      expandedAbilityCards: [...expandedAbilityCards],
+      adversaries: JSON.parse(JSON.stringify(adversaries))
+    };
+  }
+
+  function applySessionPayload(payload, regenerateIds, options) {
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid save data');
+    const sanitize = options && options.sanitizeFeatures;
+    fearTokens = Math.max(0, parseInt(payload.fearTokens) || 0);
+    playerTokens = Math.max(0, parseInt(payload.playerTokens) || 0);
+    roundCount = Math.max(1, parseInt(payload.round) || 1);
+    document.getElementById('partySize').value = payload.partySize || 4;
+    compactMode = !!payload.compactMode;
+    setupPanelOpen = payload.setupPanelOpen;
+    sessionPanelOpen = payload.sessionPanelOpen;
+    expandedAbilityCards = new Set(Array.isArray(payload.expandedAbilityCards) ? payload.expandedAbilityCards : []);
+    document.getElementById('fearCount').innerText = fearTokens;
+    document.getElementById('playerCount').innerText = playerTokens;
+    updateRoundDisplay();
+    applyUIState();
+
+    if (!Array.isArray(payload.adversaries)) throw new Error('No adversaries in code');
+    adversaries = payload.adversaries.map(adv => {
+      const copy = prepareAdversary(adv, { sanitizeFeatures: sanitize });
+      if (regenerateIds) copy.id = generateId();
+      return copy;
+    });
+    hideUndoToast();
+    saveData();
+    renderGrid();
+  }
+
+  function utf8ToBase64(str) {
+    return L.utf8ToBase64(str);
+  }
+
+  function base64ToUtf8(b64) {
+    return L.base64ToUtf8(b64);
+  }
+
+  function formatShareCode(b64) {
+    return L.formatShareCode(b64);
+  }
+
+  function normalizeShareCodeInput(input) {
+    return L.normalizeShareCodeInput(input);
+  }
+
+  function exportShareCode() {
+    const payload = getSessionPayload();
+    const b64 = utf8ToBase64(JSON.stringify(payload));
+    const code = formatShareCode(b64);
+    document.getElementById('shareCodeArea').value = code;
+    setShareMsg('Code generated — copy and share it.', false);
+  }
+
+  function copyShareCode() {
+    const area = document.getElementById('shareCodeArea');
+    if (!area.value.trim()) {
+      exportShareCode();
+    }
+    area.select();
+    const text = area.value;
+    const onSuccess = () => setShareMsg('Copied to clipboard.', false);
+    const onFail = () => setShareMsg('Could not copy — select and copy manually.', true);
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+        if (legacyCopy(text)) onSuccess();
+        else onFail();
+      });
+    } else if (legacyCopy(text)) {
+      onSuccess();
+    } else {
+      onFail();
+    }
+  }
+
+  function legacyCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function importShareCode() {
+    const raw = document.getElementById('shareCodeArea').value.trim();
+    if (!raw) {
+      setShareMsg('Paste a code first.', true);
+      return;
+    }
+    try {
+      const b64 = normalizeShareCodeInput(raw);
+      const payload = JSON.parse(base64ToUtf8(b64));
+      if (adversaries.length > 0 && !confirm('Import will replace your current encounter. Continue?')) return;
+      applySessionPayload(payload, true, { sanitizeFeatures: true });
+      setShareMsg('Imported ' + adversaries.length + ' adversaries successfully.', false);
+    } catch (err) {
+      setShareMsg('Invalid code — check for typos or missing characters.', true);
+      console.warn('Import failed:', err);
+    }
+  }
+
+  function setShareMsg(text, isError) {
+    const el = document.getElementById('shareMsg');
+    el.textContent = text;
+    el.className = 'share-msg' + (isError ? ' error' : '');
+  }
+
+  function getPresets() {
+    try {
+      const raw = localStorage.getItem(PRESETS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  }
+
+  function savePresetsList(list) {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(list));
+    loadPresetList();
+  }
+
+  function loadPresetList() {
+    const select = document.getElementById('presetSelect');
+    if (!select) return;
+    const presets = getPresets().sort((a, b) => a.name.localeCompare(b.name));
+    select.innerHTML = '<option value="">— Select a preset —</option>';
+    presets.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = String(p.savedAt);
+      const count = p.data?.adversaries?.length || 0;
+      opt.textContent = p.name + ' (' + count + ')';
+      select.appendChild(opt);
+    });
+  }
+
+  function savePreset() {
+    const nameInput = document.getElementById('presetName');
+    const name = nameInput.value.trim();
+    if (!name) {
+      alert('Enter a name for this preset.');
+      return;
+    }
+    if (adversaries.length === 0) {
+      alert('Add adversaries to the encounter before saving a preset.');
+      return;
+    }
+    const presets = getPresets();
+    const existing = presets.findIndex(p => p.name.toLowerCase() === name.toLowerCase());
+    const entry = { name, savedAt: Date.now(), data: getSessionPayload() };
+    if (existing >= 0) {
+      if (!confirm('Preset "' + name + '" already exists. Overwrite?')) return;
+      presets[existing] = entry;
+    } else {
+      presets.push(entry);
+    }
+    savePresetsList(presets);
+    nameInput.value = '';
+    setShareMsg('Preset "' + name + '" saved.', false);
+  }
+
+  function loadPreset() {
+    const select = document.getElementById('presetSelect');
+    const savedAt = parseInt(select.value);
+    if (isNaN(savedAt)) {
+      alert('Select a preset to load.');
+      return;
+    }
+    const preset = getPresets().find(p => p.savedAt === savedAt);
+    if (!preset) return;
+    if (adversaries.length > 0 && !confirm('Load "' + preset.name + '"? This replaces the current encounter.')) return;
+    applySessionPayload(preset.data, true);
+    setShareMsg('Loaded preset "' + preset.name + '".', false);
+  }
+
+  function deletePreset() {
+    const select = document.getElementById('presetSelect');
+    const savedAt = parseInt(select.value);
+    if (isNaN(savedAt)) {
+      alert('Select a preset to delete.');
+      return;
+    }
+    const preset = getPresets().find(p => p.savedAt === savedAt);
+    if (!preset) return;
+    if (!confirm('Delete preset "' + preset.name + '"?')) return;
+    const all = getPresets().filter(p => p.savedAt !== savedAt);
+    savePresetsList(all);
+    setShareMsg('Preset deleted.', false);
+  }
+
+  function buildPremadeCatalog() {
+    premadeCatalog = Object.entries(monsterManual).map(([key, data]) => ({
+      key, name: data.name, type: data.type, env: data.env, tier: String(data.tier || '1')
+    }));
+  }
+
+  function populateEnvFilter() {
+    const envs = [...new Set(premadeCatalog.map(m => m.env))].sort();
+    const select = document.getElementById('premadeEnvFilter');
+    envs.forEach(env => {
+      const opt = document.createElement('option');
+      opt.value = env;
+      opt.textContent = env;
+      select.appendChild(opt);
+    });
+  }
+
+  function filterPremadeDropdown() {
+    const search = (document.getElementById('premadeSearch')?.value || '').toLowerCase().trim();
+    const tierFilter = document.getElementById('premadeTierFilter')?.value || 'all';
+    const envFilter = document.getElementById('premadeEnvFilter')?.value || 'all';
+    const select = document.getElementById('premadeSelect');
+    const hint = document.getElementById('premadeFilterHint');
+    select.innerHTML = '';
+
+    const filtered = premadeCatalog.filter(m => {
+      if (tierFilter !== 'all' && m.tier !== tierFilter) return false;
+      if (envFilter !== 'all' && m.env !== envFilter) return false;
+      if (!search) return true;
+      const hay = (m.name + ' ' + m.type + ' ' + m.env + ' tier ' + m.tier).toLowerCase();
+      return hay.includes(search);
+    });
+
+    if (hint) {
+      hint.textContent = filtered.length === 0
+        ? 'No adversaries match your filters.'
+        : filtered.length + ' of ' + premadeCatalog.length + ' shown';
+    }
+
+    if (filtered.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '— No matches —';
+      select.appendChild(opt);
+      return;
+    }
+
+    const envGroups = {};
+    filtered.forEach(m => {
+      if (!envGroups[m.env]) envGroups[m.env] = [];
+      envGroups[m.env].push(m);
+    });
+
+    Object.keys(envGroups).sort().forEach(env => {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = env;
+      envGroups[env].sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)).forEach(m => {
+        const option = document.createElement('option');
+        option.value = m.key;
+        option.textContent = '[T' + m.tier + ' ' + m.type + '] ' + m.name;
+        optgroup.appendChild(option);
+      });
+      select.appendChild(optgroup);
+    });
+  }
+
+  function toggleAbilities(id) {
+    if (expandedAbilityCards.has(id)) expandedAbilityCards.delete(id);
+    else expandedAbilityCards.add(id);
+    const section = getCardElement(id)?.querySelector('.features-section');
+    if (section) section.classList.toggle('collapsed', !expandedAbilityCards.has(id));
+    saveData();
+  }
+
+  function isDefeated(adv) {
+    return L.isDefeated(adv);
+  }
+
+  function updateDefeatedState(id) {
+    const adv = adversaries.find(a => a.id === id);
+    const card = getCardElement(id);
+    if (!adv || !card) return;
+    card.classList.toggle('defeated', isDefeated(adv));
+    const badge = card.querySelector('.badge-defeated');
+    if (badge) badge.style.display = isDefeated(adv) ? '' : 'none';
+  }
+
+  function saveData() {
+    const partySize = parseInt(document.getElementById('partySize').value) || 4;
+    const data = {
+      saveVersion: L.SAVE_VERSION,
+      fearTokens,
+      playerTokens,
+      round: roundCount,
+      partySize,
+      compactMode,
+      setupPanelOpen: document.getElementById('section-setup')?.open ?? true,
+      sessionPanelOpen: document.getElementById('section-session')?.open ?? false,
+      expandedAbilityCards: [...expandedAbilityCards],
+      adversaries
+    };
+    try { localStorage.setItem('dh_tracker_save', JSON.stringify(data)); } catch (e) { console.warn('saveData: localStorage write failed', e); }
+    calculateThreat();
+  }
+
+  function loadData() {
+    const saved = localStorage.getItem('dh_tracker_save');
+    if (!saved) return;
+
+    try {
+      let parsed = JSON.parse(saved);
+      if (typeof parsed !== 'object' || parsed === null) {
+        throw new Error('Invalid save format');
+      }
+      parsed = L.migrateSaveData(parsed);
+
+      fearTokens = parsed.fearTokens || 0;
+      playerTokens = parsed.playerTokens || 0;
+      roundCount = Math.max(1, parseInt(parsed.round) || 1);
+      compactMode = !!parsed.compactMode;
+      setupPanelOpen = parsed.setupPanelOpen;
+      sessionPanelOpen = parsed.sessionPanelOpen;
+      expandedAbilityCards = new Set(Array.isArray(parsed.expandedAbilityCards) ? parsed.expandedAbilityCards : []);
+      adversaries = Array.isArray(parsed.adversaries)
+        ? parsed.adversaries.map(adv => prepareAdversary(adv))
+        : [];
+
+      if (parsed.partySize) {
+        document.getElementById('partySize').value = parsed.partySize;
+      }
+
+      document.getElementById('fearCount').innerText = fearTokens;
+      document.getElementById('playerCount').innerText = playerTokens;
+    } catch (err) {
+      console.warn('Could not load saved data, starting fresh:', err);
+      fearTokens = 0;
+      playerTokens = 0;
+      roundCount = 1;
+      compactMode = false;
+      adversaries = [];
+      expandedAbilityCards.clear();
+      localStorage.removeItem('dh_tracker_save');
+    }
+  }
+
+  function updateRoundDisplay(flash) {
+    const el = document.getElementById('roundDisplay');
+    if (el) el.textContent = roundCount;
+    if (flash) triggerAnim(el, 'round-flash', 400);
+  }
+
+  function updateRound(amt) {
+    roundCount = Math.max(1, roundCount + amt);
+    updateRoundDisplay(amt > 0);
+    saveData();
+  }
+
+  function toggleCompact() {
+    compactMode = !compactMode;
+    document.getElementById('encounterGrid').classList.toggle('compact', compactMode);
+    document.getElementById('compactToggle').classList.toggle('btn-active', compactMode);
+    saveData();
+  }
+
+  function removeDefeated() {
+    const count = adversaries.filter(a => isDefeated(a)).length;
+    if (count === 0) { alert('No defeated adversaries to remove.'); return; }
+    if (!confirm('Remove ' + count + ' defeated adversar' + (count === 1 ? 'y' : 'ies') + '?')) return;
+    adversaries = adversaries.filter(a => !isDefeated(a));
+    hideUndoToast();
+    saveData();
+    renderGrid();
+  }
+
+  function clearEncounter() {
+    if (confirm('Clear all adversaries from the encounter board? Fear, player actions, and round will be kept.')) {
+      hideUndoToast();
+      adversaries = [];
+      saveData();
+      renderGrid();
+    }
+  }
+
+  function resetSession() {
+    if (!confirm('Reset the full session? This clears fear, player actions, round, and all adversaries.')) return;
+    hideUndoToast();
+    adversaries = [];
+    fearTokens = 0;
+    playerTokens = 0;
+    roundCount = 1;
+    document.getElementById('fearCount').innerText = fearTokens;
+    document.getElementById('playerCount').innerText = playerTokens;
+    updateRoundDisplay();
+    saveData();
+    renderGrid();
+  }
+
+  function updateFear(amt) {
+    fearTokens = Math.max(0, fearTokens + amt);
+    document.getElementById('fearCount').innerText = fearTokens;
+    if (amt !== 0) triggerAnim(document.getElementById('fearCount'), 'token-bump-fear', 300);
+    saveData();
+  }
+
+  function updatePlayer(amt) {
+    playerTokens = Math.max(0, playerTokens + amt);
+    document.getElementById('playerCount').innerText = playerTokens;
+    if (amt !== 0) triggerAnim(document.getElementById('playerCount'), 'token-bump-action', 300);
+    saveData();
+  }
+
+  function clearPlayer() {
+    playerTokens = 0;
+    document.getElementById('playerCount').innerText = playerTokens; 
+    saveData();
+  }
+
+  function calculateThreat() {
+    const partySize = parseInt(document.getElementById('partySize').value) || 4;
+    const result = L.calculateThreatLevel(adversaries, partySize);
+    const display = document.getElementById('threatDisplay');
+    display.className = 'threat-level' + (result.cssClass ? ' ' + result.cssClass : '');
+    display.innerText = result.label;
+    display.style.color = result.color || '';
+  }
+
+  function formatDamageType(type) {
+    return L.formatDamageType(type);
+  }
+
+  function isMinion(adv) {
+    return L.isMinion(adv);
+  }
+
+  function isHorde(adv) {
+    return L.isHorde(adv);
+  }
+
+  function isHordeWeakened(adv) {
+    return L.isHordeWeakened(adv);
+  }
+
+  function getEffectiveDice(adv) {
+    return L.getEffectiveDice(adv);
+  }
+
+  function getThresholdHtml(adv) {
+    if (isMinion(adv)) {
+      const cleave = adv.minionCleave ? ' Every ' + adv.minionCleave + ' damage also defeats another Minion in range.' : '';
+      return 'Minion: <strong>any hit defeats</strong>' + (cleave ? ' <span style="color:#888;">(' + escapeHtml(String(adv.minionCleave)) + ' dmg cleave)</span>' : '');
+    }
+    if (adv.major === 0 && adv.severe === 0) return 'Thresholds: <strong>None</strong>';
+    return 'Major: <strong>' + escapeHtml(adv.major) + '</strong> &nbsp;|&nbsp; Severe: <strong>' + escapeHtml(adv.severe) + '</strong>';
+  }
+
+  function getRoleRuleHtml(adv) {
+    if (isMinion(adv)) {
+      return '<div class="role-rule minion"><strong>Minion:</strong> Defeated on any damage. Use Apply Hit for the primary target; cleave may defeat extras in range (see threshold note).</div>';
+    }
+    if (isHorde(adv)) {
+      const weakened = isHordeWeakened(adv);
+      const cls = weakened ? 'role-rule horde weakened' : 'role-rule horde';
+      const status = weakened ? 'WEAKENED — damage reduced to ' + escapeHtml(adv.diceWeak) : 'Full strength — ' + escapeHtml(adv.dice);
+      const ratio = adv.hordePerHp ? ' (' + adv.hordePerHp + ' HP ratio)' : '';
+      return '<div class="' + cls + '"><strong>Horde' + ratio + ':</strong> At half HP or less, standard attack becomes ' + escapeHtml(adv.diceWeak) + '. Currently: ' + status + '.</div>';
+    }
+    return '';
+  }
+
+  function getSummonsHtml(adv, safeId) {
+    if (!adv.summons || !adv.summons.length) return '';
+    let html = '<div class="summons-section"><h4>Summons</h4>';
+    adv.summons.forEach((spec, idx) => {
+      html += '<button type="button" class="summon-btn" onclick="summonFromTemplate(\'' + safeId + '\', ' + idx + ')">' + escapeHtml(spec.label) + '</button>';
+      if (spec.note) html += '<div class="summon-note">' + escapeHtml(spec.note) + '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function showCleaveToast(adversary, rawDamage) {
+    const extra = L.getMinionCleaveExtra(rawDamage, adversary.minionCleave);
+    if (extra <= 0) return;
+    clearTimeout(undoTimer);
+    undoState = null;
+    document.getElementById('undoToastText').innerHTML = 'Minion defeated. <strong>Cleave:</strong> also remove ' + extra + ' more Minion(s) in range if the attack would hit them.';
+    document.querySelector('#undoToast .btn-undo').style.display = 'none';
+    document.getElementById('undoToast').classList.add('visible');
+    undoTimer = setTimeout(hideUndoToast, 6000);
+  }
+
+  function rollDiceExpr(expr) {
+    return L.rollDiceExpr(expr);
+  }
+
+  function summonFromTemplate(parentId, summonIndex) {
+    const parent = adversaries.find(a => a.id === parentId);
+    if (!parent || !parent.summons || !parent.summons[summonIndex]) return;
+    const spec = parent.summons[summonIndex];
+    const template = monsterManual[spec.templateKey];
+    if (!template) return;
+
+    const actualCount = spec.dice ? rollDiceExpr(spec.dice) : spec.count;
+    const parentIndex = adversaries.findIndex(a => a.id === parentId);
+    const newIds = [];
+    for (let i = 0; i < actualCount; i++) {
+      const copy = prepareAdversary(JSON.parse(JSON.stringify(template)));
+      copy.id = generateId();
+      copy.templateKey = spec.templateKey;
+      copy.currentHp = copy.maxHp;
+      copy.currentStress = 0;
+      copy.statuses = [];
+      adversaries.splice(parentIndex + 1 + i, 0, copy);
+      newIds.push(copy.id);
+    }
+    markCardEnter.apply(null, newIds);
+    saveData();
+    renderGrid();
+  }
+
+  function generateId() {
+    return Date.now().toString() + Math.floor(Math.random() * 1000);
+  }
+
+  function duplicateAdversary(id) {
+    const source = adversaries.find(a => a.id === id);
+    if (!source) return;
+    const copy = JSON.parse(JSON.stringify(source));
+    copy.id = generateId();
+    const index = adversaries.findIndex(a => a.id === id);
+    adversaries.splice(index + 1, 0, copy);
+    markCardEnter(copy.id);
+    saveData();
+    renderGrid();
+  }
+
+  function showUndoToast(adversary, index) {
+    clearTimeout(undoTimer);
+    undoState = { adversary: JSON.parse(JSON.stringify(adversary)), index };
+    document.getElementById('undoToastText').innerHTML = 'Removed <strong>' + escapeHtml(adversary.name) + '</strong>';
+    document.querySelector('#undoToast .btn-undo').style.display = '';
+    document.getElementById('undoToast').classList.add('visible');
+    undoTimer = setTimeout(hideUndoToast, 5000);
+  }
+
+  function hideUndoToast() {
+    clearTimeout(undoTimer);
+    undoTimer = null;
+    undoState = null;
+    document.querySelector('#undoToast .btn-undo').style.display = '';
+    document.getElementById('undoToast').classList.remove('visible');
+  }
+
+  function undoRemove() {
+    if (!undoState) return;
+    const { adversary, index } = undoState;
+    adversaries.splice(Math.min(index, adversaries.length), 0, adversary);
+    markCardEnter(adversary.id);
+    hideUndoToast();
+    saveData();
+    renderGrid();
+  }
+
+  function addPremade() {
+    const key = document.getElementById('premadeSelect').value;
+    if (!key) return;
+    const template = monsterManual[key];
+    if (!template) return;
+    const newEnemy = prepareAdversary(JSON.parse(JSON.stringify(template)));
+    newEnemy.id = generateId();
+    newEnemy.templateKey = key;
+    newEnemy.currentHp = newEnemy.maxHp;
+    newEnemy.currentStress = 0;
+    newEnemy.statuses = [];
+    adversaries.push(newEnemy);
+    markCardEnter(newEnemy.id);
+    saveData();
+    renderGrid();
+  }
+
+  function resetCustomAdversaryForm() {
+    document.getElementById('advName').value = '';
+    document.getElementById('advDiff').value = '';
+    document.getElementById('advHP').value = '';
+    document.getElementById('advStress').value = '';
+    document.getElementById('advMajor').value = '';
+    document.getElementById('advSevere').value = '';
+    document.getElementById('advWeapon').value = '';
+    document.getElementById('advATK').value = '';
+    document.getElementById('advDice').value = '';
+    document.getElementById('advType').value = 'Minion';
+    document.getElementById('advTier').value = '1';
+    document.getElementById('advDamageType').value = 'Physical';
+  }
+
+  function addCustomAdversary() {
+    const name = document.getElementById('advName').value.trim();
+    const type = document.getElementById('advType').value;
+    const diff = document.getElementById('advDiff').value;
+    const hp = parseInt(document.getElementById('advHP').value);
+    const stress = parseInt(document.getElementById('advStress').value);
+    const major = parseInt(document.getElementById('advMajor').value);
+    const severe = parseInt(document.getElementById('advSevere').value);
+    
+    if (!name || diff === '' || diff == null || isNaN(hp) || isNaN(stress) || isNaN(major) || isNaN(severe)) {
+      alert("Please fill out Name, Difficulty, and all numeric stats.");
+      return;
+    }
+
+    const tier = document.getElementById('advTier').value;
+    if (L.findOfficialNameCollision(name, tier, monsterManual)) {
+      if (!confirm('An official Tier ' + tier + ' adversary named "' + name + '" exists. Create as custom anyway? It will not sync to the SRD stat block.')) return;
+    }
+
+    adversaries.push(normalizeAdversary({ 
+      id: generateId(), 
+      isCustom: true,
+      name, type, tier, diff, 
+      atk: document.getElementById('advATK').value || "+0",
+      maxHp: hp, currentHp: hp, 
+      maxStress: stress, currentStress: 0, 
+      major, severe,
+      weapon: document.getElementById('advWeapon').value || "Strike", 
+      damageType: document.getElementById('advDamageType').value || "Physical", 
+      dice: document.getElementById('advDice').value || "1d6",
+      motives: "Custom.", experiences: "None", features: [], statuses: []
+    }));
+    markCardEnter(adversaries[adversaries.length - 1].id);
+    
+    resetCustomAdversaryForm();
+    saveData();
+    renderGrid();
+  }
+
+  function updateStat(id, stat, amount) {
+    const adv = adversaries.find(a => a.id === id);
+    if (!adv) return;
+    const wasDefeated = isDefeated(adv);
+    let effects = {};
+
+    if (stat === 'hp') {
+      const prev = adv.currentHp;
+      adv.currentHp = Math.max(0, Math.min(adv.maxHp, adv.currentHp + amount));
+      if (adv.currentHp < prev) effects.hpFlash = 'damage';
+      else if (adv.currentHp > prev) effects.hpFlash = 'heal';
+      if (!wasDefeated && isDefeated(adv)) effects.justDefeated = true;
+    } else if (stat === 'stress') {
+      const prev = adv.currentStress;
+      adv.currentStress = Math.max(0, Math.min(adv.maxStress, adv.currentStress + amount));
+      if (adv.currentStress > prev) effects.stressFlash = 'up';
+      else if (adv.currentStress < prev) effects.stressFlash = 'down';
+    }
+
+    saveData();
+    updateCardStats(id, effects);
+  }
+
+  function toggleStatus(id, status) {
+    const adv = adversaries.find(a => a.id === id);
+    if (!adv) return;
+    if (!adv.statuses) adv.statuses = [];
+    
+    if (adv.statuses.includes(status)) {
+      adv.statuses = adv.statuses.filter(s => s !== status);
+    } else {
+      adv.statuses.push(status);
+    }
+    saveData();
+    updateCardStatuses(id);
+  }
+
+  function getCardElement(id) {
+    return document.querySelector('.card[data-id="' + id + '"]');
+  }
+
+  function updateCardStats(id, effects) {
+    effects = effects || {};
+    const adv = adversaries.find(a => a.id === id);
+    const card = getCardElement(id);
+    if (!adv || !card) {
+      renderGrid();
+      return;
+    }
+
+    const hpPercent = adv.maxHp > 0 ? (adv.currentHp / adv.maxHp) * 100 : 0;
+    const hpColor = getHpColor(adv.currentHp, adv.maxHp);
+    const stressPercent = adv.maxStress > 0 ? (adv.currentStress / adv.maxStress) * 100 : 0;
+
+    card.querySelector('.hp-value').textContent = adv.currentHp + ' / ' + adv.maxHp;
+    const hpFill = card.querySelector('.hp-fill');
+    hpFill.style.width = hpPercent + '%';
+    hpFill.style.backgroundColor = hpColor;
+
+    const stressFill = card.querySelector('.stress-fill');
+    card.querySelector('.stress-value').textContent = adv.currentStress + ' / ' + adv.maxStress;
+    stressFill.style.width = stressPercent + '%';
+
+    const diceEl = card.querySelector('.dmg-value');
+    if (diceEl) {
+      diceEl.textContent = getEffectiveDice(adv);
+      diceEl.classList.toggle('horde-weakened', isHordeWeakened(adv));
+    }
+
+    const thresholdsEl = card.querySelector('.thresholds');
+    if (thresholdsEl) thresholdsEl.innerHTML = getThresholdHtml(adv);
+
+    const roleRuleEl = card.querySelector('.role-rule-wrap');
+    if (roleRuleEl) roleRuleEl.innerHTML = getRoleRuleHtml(adv);
+
+    updateDefeatedState(id);
+    updateAdvCount();
+
+    if (effects.hpFlash === 'damage') {
+      triggerAnim(card, 'flash-hp-damage', 350);
+      triggerAnim(hpFill, 'flash-damage', 350);
+      triggerAnim(card.querySelector('.hp-value'), 'flash-bump', 300);
+    } else if (effects.hpFlash === 'heal') {
+      triggerAnim(card, 'flash-hp-heal', 350);
+      triggerAnim(hpFill, 'flash-heal', 350);
+      triggerAnim(card.querySelector('.hp-value'), 'flash-bump', 300);
+    }
+
+    if (effects.stressFlash === 'up') {
+      triggerAnim(stressFill, 'flash-stress-up', 350);
+      triggerAnim(card.querySelector('.stress-value'), 'flash-bump', 300);
+    } else if (effects.stressFlash === 'down') {
+      triggerAnim(stressFill, 'flash-stress-down', 350);
+      triggerAnim(card.querySelector('.stress-value'), 'flash-bump', 300);
+    }
+
+    if (effects.justDefeated) triggerAnim(card, 'flash-defeat', 400);
+  }
+
+  function updateCardStatuses(id) {
+    const adv = adversaries.find(a => a.id === id);
+    const card = getCardElement(id);
+    if (!adv || !card) {
+      renderGrid();
+      return;
+    }
+
+    card.querySelectorAll('.status-btn').forEach(btn => {
+      const status = btn.dataset.status;
+      btn.classList.toggle('active', adv.statuses.includes(status));
+    });
+  }
+
+  function applyDamage(id) {
+    const input = document.getElementById('dmg-' + id);
+    const rawDamage = parseInt(input.value);
+    if (isNaN(rawDamage) || rawDamage <= 0) return;
+
+    const adv = adversaries.find(a => a.id === id);
+    if (!adv) return;
+
+    if (isMinion(adv)) {
+      const wasDefeated = isDefeated(adv);
+      adv.currentHp = 0;
+      saveData();
+      updateCardStats(id, {
+        hpFlash: 'damage',
+        justDefeated: !wasDefeated
+      });
+      showCleaveToast(adv, rawDamage);
+      input.value = '';
+      return;
+    }
+
+    let hpLoss = L.calculateHpLoss(rawDamage, adv.major, adv.severe);
+    updateStat(id, 'hp', -hpLoss);
+    input.value = '';
+  }
+
+  function removeAdversary(id) {
+    const index = adversaries.findIndex(a => a.id === id);
+    if (index === -1) return;
+    const removed = adversaries[index];
+    const card = getCardElement(id);
+    let finished = false;
+
+    function finishRemove() {
+      if (finished) return;
+      finished = true;
+      adversaries = adversaries.filter(a => a.id !== id);
+      saveData();
+      renderGrid();
+      showUndoToast(removed, index);
+    }
+
+    if (card && !prefersReducedMotion()) {
+      card.classList.add('card-exit');
+      card.addEventListener('animationend', finishRemove, { once: true });
+      setTimeout(finishRemove, 280);
+    } else {
+      finishRemove();
+    }
+  }
+
+  function getHpColor(current, max) {
+    const percent = current / max;
+    if (percent > 0.5) return "#2ecc71"; 
+    if (percent > 0.25) return "#f1c40f"; 
+    return "#e74c3c"; 
+  }
+
+  function updateAdvCount() {
+    const countEl = document.getElementById('advCount');
+    if (!countEl) return;
+    const total = adversaries.length;
+    if (total === 0) { countEl.textContent = ''; return; }
+    const live = adversaries.filter(a => !isDefeated(a)).length;
+    const defeated = total - live;
+    countEl.textContent = live + ' active' + (defeated > 0 ? ' · ' + defeated + ' defeated' : '');
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('encounterGrid');
+    grid.innerHTML = '';
+    grid.classList.toggle('compact', compactMode);
+
+    updateAdvCount();
+
+    if (adversaries.length === 0) {
+      grid.innerHTML = `
+        <div class="empty-state">
+          <p>No adversaries in this encounter yet.</p>
+          <p class="empty-hint">Use Quick-Add or create a custom adversary to get started.</p>
+        </div>`;
+      return;
+    }
+    
+    adversaries.forEach(adv => {
+      if(!adv.statuses) adv.statuses = [];
+      
+      let featuresHTML = (adv.features || []).map((feat) => {
+        const fixed = fixMojibake(feat);
+        return `<div class="feature-item"><span>${fixed}</span></div>`;
+      }).join('');
+      
+      const descHtml = adv.desc ? `<div class="adv-desc">${escapeHtml(fixMojibake(adv.desc))}</div>` : '';
+      
+      const safeId = escapeHtml(adv.id);
+      let statusTogglesHTML = possibleStatuses.map(status => {
+        const isActive = adv.statuses.includes(status) ? 'active' : '';
+        return `<button class="status-btn ${isActive}" data-status="${escapeHtml(status)}" onclick="toggleStatus('${safeId}', '${escapeHtml(status)}')">${escapeHtml(status)}</button>`;
+      }).join('');
+
+      const hpPercent = adv.maxHp > 0 ? (adv.currentHp / adv.maxHp) * 100 : 0;
+      const hpColor = getHpColor(adv.currentHp, adv.maxHp);
+      const stressPercent = adv.maxStress > 0 ? (adv.currentStress / adv.maxStress) * 100 : 0;
+      const roleColor = roleColors[adv.type] || "#7f8c8d";
+      const dmgType = formatDamageType(adv.damageType);
+      const effectiveDice = getEffectiveDice(adv);
+      const attackRange = adv.range || 'Melee';
+      const roleRuleHtml = getRoleRuleHtml(adv);
+      const summonsHtml = getSummonsHtml(adv, safeId);
+      const thresholdHtml = getThresholdHtml(adv);
+      const applyLabel = isMinion(adv) ? 'Defeat Minion' : 'Apply Hit';
+      const featCount = (adv.features || []).length;
+      const abilitiesCollapsed = featCount > 0 && !expandedAbilityCards.has(adv.id);
+      const abilitiesSectionHtml = featCount > 0 ? `
+        <div class="features-section ${abilitiesCollapsed ? 'collapsed' : ''}">
+          <div class="features-toggle" onclick="toggleAbilities('${safeId}')">
+            <span>Abilities<span class="feat-count">(${featCount})</span></span>
+            <span class="chevron">&#9660;</span>
+          </div>
+          <div class="features-list">${featuresHTML}</div>
+        </div>` : '';
+
+      const card = document.createElement('div');
+      card.className = 'card' + (isDefeated(adv) ? ' defeated' : '');
+      card.dataset.id = adv.id;
+      card.style.borderColor = roleColor;
+      
+      card.innerHTML = `
+        <div class="card-header">
+          <div class="card-header-text">
+            <h3>${escapeHtml(adv.name)}</h3>
+            <div class="badge-container">
+              <span class="badge" style="background-color: ${roleColor};">Tier ${escapeHtml(adv.tier)} &bull; ${escapeHtml(adv.type)}</span>
+              <span class="badge badge-diff">DIFF: ${escapeHtml(adv.diff)}</span>
+              <span class="badge badge-defeated" style="display:${isDefeated(adv) ? '' : 'none'};">DEFEATED</span>
+            </div>
+          </div>
+          <div class="card-header-actions">
+            <button class="btn-duplicate" title="Duplicate adversary" onclick="duplicateAdversary('${safeId}')">&#10697;</button>
+            <button class="btn-remove" title="Remove" onclick="removeAdversary('${safeId}')">&#10005;</button>
+          </div>
+        </div>
+        
+        <div class="status-bar">${statusTogglesHTML}</div>
+        
+        <div class="lore-box">
+          ${descHtml}
+          <div class="motives"><strong>Motives:</strong> ${escapeHtml(fixMojibake(adv.motives))}</div>
+          <div class="exp">Experiences: ${escapeHtml(fixMojibake(adv.experiences))}</div>
+        </div>
+        
+        <div class="attack-box">
+          <div class="atk-tag"><span class="lbl">ATK</span><span class="val">${escapeHtml(adv.atk)}</span></div>
+          <div class="atk-tag"><span class="lbl">RNG</span><span class="val" style="color:#85c1e9;">${escapeHtml(attackRange)}</span></div>
+          <div class="atk-tag"><span class="lbl">WPN</span><span class="val" style="color:#aed6f1;">${escapeHtml(adv.weapon)}</span></div>
+          <div class="atk-tag"><span class="lbl">DMG</span><span class="val dmg-value ${isHordeWeakened(adv) ? 'horde-weakened' : ''}" style="color:#f9e79f;">${escapeHtml(effectiveDice)}</span></div>
+          <div class="atk-tag"><span class="lbl">TYPE</span><span class="val ${dmgType.cssClass}">${escapeHtml(dmgType.label)}</span></div>
+        </div>
+
+        <div class="role-rule-wrap">${roleRuleHtml}</div>
+        
+        <div class="stat-block">
+          <div class="stat-row">
+            <span class="stat-label" style="color: #e74c3c;">HP</span>
+            <div class="stat-controls">
+              <button class="btn-stat" onclick="updateStat('${safeId}', 'hp', -1)">-</button>
+              <span class="stat-value hp-value">${adv.currentHp} / ${adv.maxHp}</span>
+              <button class="btn-stat" onclick="updateStat('${safeId}', 'hp', 1)">+</button>
+            </div>
+          </div>
+          <div class="progress-bg"><div class="progress-fill hp-fill" style="width: ${hpPercent}%; background-color: ${hpColor};"></div></div>
+          
+          <div class="stat-row" style="margin-top: 5px;">
+            <span class="stat-label" style="color: #9b59b6;">Stress</span>
+            <div class="stat-controls">
+              <button class="btn-stat" onclick="updateStat('${safeId}', 'stress', -1)">-</button>
+              <span class="stat-value stress-value">${adv.currentStress} / ${adv.maxStress}</span>
+              <button class="btn-stat" onclick="updateStat('${safeId}', 'stress', 1)">+</button>
+            </div>
+          </div>
+          <div class="progress-bg"><div class="progress-fill stress-fill" style="width: ${stressPercent}%;"></div></div>
+        </div>
+        
+        <div class="thresholds">${thresholdHtml}</div>
+        
+        <div class="damage-tool">
+          <input type="number" id="dmg-${safeId}" placeholder="Dmg" min="1">
+          <button onclick="applyDamage('${safeId}')">${applyLabel}</button>
+        </div>
+
+        ${summonsHtml}
+
+        ${abilitiesSectionHtml}
+      `;
+      grid.appendChild(card);
+      if (cardEnterIds.has(adv.id)) {
+        cardEnterIds.delete(adv.id);
+        requestAnimationFrame(function() {
+          card.classList.add('card-enter');
+          setTimeout(function() { card.classList.remove('card-enter'); }, 260);
+        });
+      }
+    });
+  }
+</script>
+</body>
+</html>

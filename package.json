@@ -1,0 +1,8 @@
+{
+  "name": "daggerheart-encounter-tracker",
+  "private": true,
+  "scripts": {
+    "test": "node --test tracker-logic.test.js",
+    "build:db": "node _build_adversaries.js"
+  }
+}
